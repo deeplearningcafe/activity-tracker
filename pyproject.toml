@@ -1,0 +1,18 @@
+[project]
+name = "activity-tracker"
+version = "0.1.0"
+description = "Privacy-first local time tracker for Linux (X11)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "python-xlib>=0.33",
+    "pynput>=1.7.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+activity-agent = "activity_tracker.agent:main"
