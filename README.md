@@ -110,3 +110,12 @@ Key configuration:
 ```bash
 uv run pytest tests/ -v
 ```
+
+## Author
+
+[aipracticecafe](https://github.com/deeplearningcafe)
+[aipracticecafe-codeberg](https://codeberg.org/aipracticecafe)
+
+## License
+
+This project is licensed under the MIT License. Details are available in the [LICENSE](LICENSE.txt) file.
