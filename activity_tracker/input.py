@@ -54,9 +54,7 @@ def start_listeners() -> tuple:
     kb_listener = keyboard.Listener(on_press=_on_press)
     kb_listener.start()
 
-    mouse_listener = mouse.Listener(
-        on_click=_on_click, on_move=_on_move
-    )
+    mouse_listener = mouse.Listener(on_click=_on_click, on_move=_on_move)
     mouse_listener.start()
 
     return kb_listener, mouse_listener

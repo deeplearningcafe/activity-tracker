@@ -161,9 +161,7 @@ class TestStartListeners:
 
             assert kb is kb_inst
             assert mouse is mouse_inst
-            mock_kb.Listener.assert_called_once_with(
-                on_press=_on_press
-            )
+            mock_kb.Listener.assert_called_once_with(on_press=_on_press)
             mock_mouse.Listener.assert_called_once_with(
                 on_click=_on_click, on_move=_on_move
             )

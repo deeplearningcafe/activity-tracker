@@ -8,6 +8,7 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
+from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,9 +24,28 @@ def agent_db(tmp_path: Path) -> sqlite3.Connection:
 
 
 @pytest.fixture
-def shutdown_event() -> threading.Event:
-    """A fresh shutdown event for each test."""
-    return threading.Event()
+def shutdown_event() -> Generator[threading.Event, None, None]:
+    """A fresh shutdown event for each test. Sets the event on teardown to prevent thread leaks."""
+    event = threading.Event()
+    yield event
+    # Teardown: ensure any background threads are signaled to stop when the test finishes
+    event.set()
+
+
+@pytest.fixture(autouse=True)
+def mock_external_deps() -> Generator[None, None, None]:
+    """Mock external dependencies to prevent rogue threads and delays.
+
+    This ensures that get_idle_ms doesn't block for 5 seconds waiting for xprintidle,
+    and provides stable default metrics (0) for tests that don't explicitly mock them.
+    """
+    with (
+        patch("activity_tracker.agent.get_idle_ms", return_value=0),
+        patch(
+            "activity_tracker.agent.get_and_reset_counters", return_value=(0, 0, 0.0)
+        ),
+    ):
+        yield
 
 
 class TestPollLoop:
@@ -44,6 +64,7 @@ class TestPollLoop:
         )
 
         import activity_tracker.agent as agent_module
+
         agent_module.POLL_INTERVAL = 0.1  # speed up for tests
 
         thread = threading.Thread(
@@ -53,9 +74,7 @@ class TestPollLoop:
         thread.start()
         thread.join(timeout=2)
 
-        rows = agent_db.execute(
-            "SELECT COUNT(*) FROM activity_log"
-        ).fetchone()[0]
+        rows = agent_db.execute("SELECT COUNT(*) FROM activity_log").fetchone()[0]
         assert rows >= 1
         shutdown_event.set()  # stop background thread
 
@@ -72,6 +91,7 @@ class TestPollLoop:
         )
 
         import activity_tracker.agent as agent_module
+
         agent_module.POLL_INTERVAL = 0.1  # speed up for tests
 
         thread = threading.Thread(
@@ -100,6 +120,7 @@ class TestPollLoop:
     ) -> None:
         """Should still insert a row when X11 returns None."""
         import activity_tracker.agent as agent_module
+
         agent_module.POLL_INTERVAL = 0.1  # speed up for tests
 
         thread = threading.Thread(
@@ -130,6 +151,7 @@ class TestPollLoop:
         )
 
         import activity_tracker.agent as agent_module
+
         agent_module.POLL_INTERVAL = 0.1  # speed up for tests
 
         thread = threading.Thread(
@@ -160,6 +182,7 @@ class TestPollLoop:
         )
 
         import activity_tracker.agent as agent_module
+
         agent_module.POLL_INTERVAL = 0.1  # speed up for tests
 
         thread = threading.Thread(
@@ -193,6 +216,7 @@ class TestPollLoop:
         )
 
         import activity_tracker.agent as agent_module
+
         agent_module.POLL_INTERVAL = 5  # long interval — we want to interrupt it
 
         thread = threading.Thread(
@@ -222,6 +246,7 @@ class TestPollLoop:
         )
 
         import activity_tracker.agent as agent_module
+
         agent_module.POLL_INTERVAL = 0.2  # short enough to get 2+ ticks
 
         thread = threading.Thread(
@@ -231,9 +256,7 @@ class TestPollLoop:
         thread.start()
         thread.join(timeout=3)
 
-        count = agent_db.execute(
-            "SELECT COUNT(*) FROM activity_log"
-        ).fetchone()[0]
+        count = agent_db.execute("SELECT COUNT(*) FROM activity_log").fetchone()[0]
         assert count >= 2
         shutdown_event.set()  # stop background thread
 
@@ -366,8 +389,8 @@ class TestWindowTransitions:
         timestamps = [r[1] for r in rows]
         for i in range(1, len(timestamps)):
             assert timestamps[i] > timestamps[i - 1], (
-                f"Timestamp {i} ({timestamps[i]}) is not after {i-1} "
-                f"({timestamps[i-1]})"
+                f"Timestamp {i} ({timestamps[i]}) is not after {i - 1} "
+                f"({timestamps[i - 1]})"
             )
 
 
@@ -396,9 +419,7 @@ class TestConcurrentAccess:
         def reader():
             try:
                 for _ in range(10):
-                    agent_db.execute(
-                        "SELECT COUNT(*) FROM activity_log"
-                    ).fetchone()
+                    agent_db.execute("SELECT COUNT(*) FROM activity_log").fetchone()
                     time.sleep(0.05)
             except Exception as exc:
                 read_errors.append(exc)
@@ -421,9 +442,7 @@ class TestConcurrentAccess:
         assert not read_errors, f"Reader encountered errors: {read_errors}"
 
         # Verify writer produced records
-        count = agent_db.execute(
-            "SELECT COUNT(*) FROM activity_log"
-        ).fetchone()[0]
+        count = agent_db.execute("SELECT COUNT(*) FROM activity_log").fetchone()[0]
         assert count >= 1
 
     def test_wal_mode_enabled(
@@ -456,11 +475,12 @@ class TestIdleIntegration:
 
         agent_module.POLL_INTERVAL = 0.1
 
-        with patch(
-            "activity_tracker.agent.get_active_window",
-            return_value=WindowInfo(app_class="kitty", window_title="test.py"),
-        ), patch(
-            "activity_tracker.agent.get_idle_ms", return_value=42000
+        with (
+            patch(
+                "activity_tracker.agent.get_active_window",
+                return_value=WindowInfo(app_class="kitty", window_title="test.py"),
+            ),
+            patch("activity_tracker.agent.get_idle_ms", return_value=42000),
         ):
             thread = threading.Thread(
                 target=agent_module._poll_loop,
@@ -493,11 +513,12 @@ class TestIdleIntegration:
             index[0] = min(index[0] + 1, len(idle_values) - 1)
             return val
 
-        with patch(
-            "activity_tracker.agent.get_active_window",
-            return_value=WindowInfo(app_class="kitty", window_title="test.py"),
-        ), patch(
-            "activity_tracker.agent.get_idle_ms", side_effect=side_effect
+        with (
+            patch(
+                "activity_tracker.agent.get_active_window",
+                return_value=WindowInfo(app_class="kitty", window_title="test.py"),
+            ),
+            patch("activity_tracker.agent.get_idle_ms", side_effect=side_effect),
         ):
             thread = threading.Thread(
                 target=agent_module._poll_loop,
@@ -525,11 +546,12 @@ class TestIdleIntegration:
 
         agent_module.POLL_INTERVAL = 0.1
 
-        with patch(
-            "activity_tracker.agent.get_active_window",
-            return_value=WindowInfo(app_class="kitty", window_title="test.py"),
-        ), patch(
-            "activity_tracker.agent.get_idle_ms", return_value=0
+        with (
+            patch(
+                "activity_tracker.agent.get_active_window",
+                return_value=WindowInfo(app_class="kitty", window_title="test.py"),
+            ),
+            patch("activity_tracker.agent.get_idle_ms", return_value=0),
         ):
             thread = threading.Thread(
                 target=agent_module._poll_loop,
@@ -567,14 +589,16 @@ class TestInputMetrics:
 
         agent_module.POLL_INTERVAL = 0.1
 
-        with patch(
-            "activity_tracker.agent.get_active_window",
-            return_value=WindowInfo(app_class="kitty", window_title="test.py"),
-        ), patch(
-            "activity_tracker.agent.get_idle_ms", return_value=0
-        ), patch(
-            "activity_tracker.agent.get_and_reset_counters",
-            return_value=(5, 0, 0.0),
+        with (
+            patch(
+                "activity_tracker.agent.get_active_window",
+                return_value=WindowInfo(app_class="kitty", window_title="test.py"),
+            ),
+            patch("activity_tracker.agent.get_idle_ms", return_value=0),
+            patch(
+                "activity_tracker.agent.get_and_reset_counters",
+                return_value=(5, 0, 0.0),
+            ),
         ):
             thread = threading.Thread(
                 target=agent_module._poll_loop,
@@ -603,14 +627,16 @@ class TestInputMetrics:
 
         agent_module.POLL_INTERVAL = 0.1
 
-        with patch(
-            "activity_tracker.agent.get_active_window",
-            return_value=WindowInfo(app_class="kitty", window_title="test.py"),
-        ), patch(
-            "activity_tracker.agent.get_idle_ms", return_value=0
-        ), patch(
-            "activity_tracker.agent.get_and_reset_counters",
-            return_value=(0, 3, 0.0),
+        with (
+            patch(
+                "activity_tracker.agent.get_active_window",
+                return_value=WindowInfo(app_class="kitty", window_title="test.py"),
+            ),
+            patch("activity_tracker.agent.get_idle_ms", return_value=0),
+            patch(
+                "activity_tracker.agent.get_and_reset_counters",
+                return_value=(0, 3, 0.0),
+            ),
         ):
             thread = threading.Thread(
                 target=agent_module._poll_loop,
@@ -639,14 +665,16 @@ class TestInputMetrics:
 
         agent_module.POLL_INTERVAL = 0.1
 
-        with patch(
-            "activity_tracker.agent.get_active_window",
-            return_value=WindowInfo(app_class="kitty", window_title="test.py"),
-        ), patch(
-            "activity_tracker.agent.get_idle_ms", return_value=0
-        ), patch(
-            "activity_tracker.agent.get_and_reset_counters",
-            return_value=(0, 0, 150.5),
+        with (
+            patch(
+                "activity_tracker.agent.get_active_window",
+                return_value=WindowInfo(app_class="kitty", window_title="test.py"),
+            ),
+            patch("activity_tracker.agent.get_idle_ms", return_value=0),
+            patch(
+                "activity_tracker.agent.get_and_reset_counters",
+                return_value=(0, 0, 150.5),
+            ),
         ):
             thread = threading.Thread(
                 target=agent_module._poll_loop,
@@ -675,14 +703,16 @@ class TestInputMetrics:
 
         agent_module.POLL_INTERVAL = 0.1
 
-        with patch(
-            "activity_tracker.agent.get_active_window",
-            return_value=WindowInfo(app_class="kitty", window_title="test.py"),
-        ), patch(
-            "activity_tracker.agent.get_idle_ms", return_value=42000
-        ), patch(
-            "activity_tracker.agent.get_and_reset_counters",
-            return_value=(10, 5, 200.0),
+        with (
+            patch(
+                "activity_tracker.agent.get_active_window",
+                return_value=WindowInfo(app_class="kitty", window_title="test.py"),
+            ),
+            patch("activity_tracker.agent.get_idle_ms", return_value=42000),
+            patch(
+                "activity_tracker.agent.get_and_reset_counters",
+                return_value=(10, 5, 200.0),
+            ),
         ):
             thread = threading.Thread(
                 target=agent_module._poll_loop,

@@ -5,13 +5,13 @@ requires-python = ">=3.11"
 [[package]]
 name = "activity-tracker"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "pynput" },
     { name = "python-xlib" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "pytest" },
 ]
@@ -19,10 +19,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "pynput", specifier = ">=1.7.7" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "python-xlib", specifier = ">=0.33" },
 ]
-provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.1.0" }]
 
 [[package]]
 name = "colorama"

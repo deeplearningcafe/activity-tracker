@@ -138,7 +138,9 @@ class TestGetActiveWindow:
         """Connection should always be closed, even on errors."""
         mock_d = MagicMock()
         mock_display_cls.return_value = mock_d
-        mock_d.screen.return_value.root.get_full_property.side_effect = Exception("X11 error")
+        mock_d.screen.return_value.root.get_full_property.side_effect = Exception(
+            "X11 error"
+        )
         result = get_active_window()
         assert result is None
         mock_d.close.assert_called_once()

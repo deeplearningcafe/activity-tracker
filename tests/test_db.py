@@ -81,7 +81,12 @@ class TestDatabaseInit:
         assert col_map["timestamp"][3] == 1
 
         # counters default to 0 and are NOT NULL
-        for col_name in ("idle_ms", "keystroke_count", "mouse_click_count", "mouse_distance"):
+        for col_name in (
+            "idle_ms",
+            "keystroke_count",
+            "mouse_click_count",
+            "mouse_distance",
+        ):
             assert col_map[col_name][3] == 1  # notnull
             assert int(col_map[col_name][4]) == 0  # dflt_value
 
